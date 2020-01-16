@@ -5,8 +5,6 @@ import (
 	"image"
 	"math"
 	"sort"
-
-	colorconv "github.com/generaltso/sadbox/color" // by rodrigo moraes, exported from google code
 )
 
 // These constants are taken directly from the Android Palette source code,
@@ -157,13 +155,13 @@ func (p *Palette) FindColor(targetLuma, minLuma, maxLuma, targetSaturation, minS
 	return p.FindColorWithHueDistance(targetLuma, minLuma, maxLuma, targetSaturation, minSaturation, maxSaturation, 0)
 }
 
-func (p *Palette) FindColorWithHueDistance(targetLuma, minLuma, maxLuma, targetSaturation, minSaturation, maxSaturation float64, minHueDistance int) *Swatch {
+func (p *Palette) FindColorWithHueDistance(targetLuma, minLuma, maxLuma, targetSaturation, minSaturation, maxSaturation float64, minColorDistance float64) *Swatch {
 	var swatch *Swatch
 	var maxValue float64 = 0
 	population := 0
 	for _, sw := range p.swatches {
 		_, sat, luma := rgbToHsl(int(sw.Color))
-		if sat >= minSaturation && sat <= maxSaturation && luma >= minLuma && luma <= maxLuma && !p.isAlreadySelected(sw) && ( minHueDistance == 0 || p.satisfyHueDistance(sw, minHueDistance)) {
+		if sat >= minSaturation && sat <= maxSaturation && luma >= minLuma && luma <= maxLuma && !p.isAlreadySelected(sw) && ( minColorDistance == 0 || p.satisfyHueDistance(sw, minColorDistance)) {
 			population += sw.Population
 			value := weightedMean(invertDiff(sat, targetSaturation), WEIGHT_SATURATION, invertDiff(luma, targetLuma), WEIGHT_LUMA, float64(sw.Population)/float64(p.highestPopulation), WEIGHT_POPULATION)
 			if swatch == nil || value > maxValue {
@@ -180,20 +178,20 @@ func (p *Palette) FindColorWithHueDistance(targetLuma, minLuma, maxLuma, targetS
 }
 
 
-func (p *Palette) satisfyHueDistance(swatch *Swatch, minHueDistance int) bool {
+func (p *Palette) satisfyHueDistance(swatch *Swatch, minColorDistance float64) bool {
 	for _, sw := range p.selected {
-		if getHueDistance(swatch, sw) < minHueDistance {
+		if getColorDistance(swatch, sw) < minColorDistance {
 			return false
 		}
 	}
 	return true
 }
 
-func (p *Palette) FindColors(targetLuma, minLuma, maxLuma, targetSaturation, minSaturation, maxSaturation float64, minHueDistance int, limit int) []*Swatch {
+func (p *Palette) FindColors(targetLuma, minLuma, maxLuma, targetSaturation, minSaturation, maxSaturation float64, minColorDistance float64, limit int) []*Swatch {
 	var results []*Swatch
 
 	for range p.swatches {
-		var found = p.FindColorWithHueDistance(targetLuma, minLuma, maxLuma, targetSaturation, minSaturation, maxSaturation, minHueDistance)
+		var found = p.FindColorWithHueDistance(targetLuma, minLuma, maxLuma, targetSaturation, minSaturation, maxSaturation, minColorDistance)
 		if found != nil {
 			results = append(results, found)
 			if limit != 0 && len(results) == limit {
@@ -228,18 +226,25 @@ func weightedMean(values ...float64) float64 {
 	return sum / sumWeight
 }
 
-func getHueDistance(a, b *Swatch) int {
-	var ar, ag, ab = a.Color.RGB()
-	var br, bg, bb = b.Color.RGB()
-	var ah, _, _ = colorconv.RGBToHSL(uint8(ar), uint8(ag), uint8(ab))
-	var bh, _, _ = colorconv.RGBToHSL(uint8(br), uint8(bg), uint8(bb))
-	var ahue = ah * 360
-	var bhue = bh * 360
+func getColorDistance(a, b *Swatch) float64 {
+	return getDeltaE(a, b)
+	// var ar, ag, ab = a.Color.RGB()
+	// var br, bg, bb = b.Color.RGB()
+	// var ah, _, _ = colorconv.RGBToHSL(uint8(ar), uint8(ag), uint8(ab))
+	// var bh, _, _ = colorconv.RGBToHSL(uint8(br), uint8(bg), uint8(bb))
+	// var ahue = ah * 360
+	// var bhue = bh * 360
 
-	if (ahue > 360 || bhue > 360) {
-		return 999999
-	}
-	right := math.Abs(float64(bhue) - float64(ahue))
-	left := 360 - right
-	return int(math.Min(right, left))
+	// if (ahue > 360 || bhue > 360) {
+	// 	return 999999
+	// }
+	// right := math.Abs(float64(bhue) - float64(ahue))
+	// left := 360 - right
+	// return int(math.Min(right, left))
+}
+
+func getDeltaE (a, b *Swatch) float64 {
+	al, aa, ab := rgbToLab(a.Color)
+	bl, ba, bb := rgbToLab(b.Color)
+	return deltaE(al, aa, ab, bl, ba, bb)
 }

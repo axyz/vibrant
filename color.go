@@ -8,6 +8,12 @@ import (
 	colorconv "github.com/generaltso/sadbox/color" // by rodrigo moraes, exported from google code
 )
 
+const (
+	LAB_REFERENCE_X                 = 94.811
+	LAB_REFERENCE_Y                 = 100
+	LAB_REFERENCE_Z                 = 107.304
+)
+
 type Color int
 
 // Same as RGBHex()
@@ -119,4 +125,78 @@ func luminance(red, green, blue float64) float64 {
 		blue = math.Pow((blue+0.055)/1.055, 2.4)
 	}
 	return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
+}
+
+func rgbToXyz (color Color) (x, y, z float64) {
+	_r, _g, _b := unpackColor(int(color))
+	r := float64(_r) / 255.0
+	g := float64(_g) / 255.0
+	b := float64(_b) / 255.0
+
+	if r > 0.04045 {
+		r = math.Pow(( ( r + 0.055 ) / 1.055 ), 2.4)
+	} else {
+		r = r / 12.92
+	}
+
+	if g > 0.04045 {
+		g = math.Pow(( ( g + 0.055 ) / 1.055 ), 2.4)
+	} else {
+		g = g / 12.92
+	}
+
+	if b > 0.04045 {
+		b = math.Pow(( ( b + 0.055 ) / 1.055 ), 2.4)
+	} else {
+		b = b / 12.92
+	}
+
+	r = r * 100
+	g = g * 100
+	b = b * 100
+
+	x = r * 0.4124 + g * 0.3576 + b * 0.1805
+	y = r * 0.2126 + g * 0.7152 + b * 0.0722
+	z = r * 0.0193 + g * 0.1192 + b * 0.9505
+
+	return x, y, z
+}
+
+func xyzToLab (_x, _y, _z float64) (l, a, b float64) {
+	x := _x / LAB_REFERENCE_X
+	y := _y / LAB_REFERENCE_Y
+	z := _z / LAB_REFERENCE_Z
+
+	if x > 0.008856 {
+		x = math.Pow(x, 1 / 3.0)
+	} else {
+		x = ( 7.787 * x ) + ( 16 / 116.0 )
+	}
+
+	if y > 0.008856 {
+		y = math.Pow(y, 1 / 3.0)
+	} else {
+		y = ( 7.787 * y ) + ( 16 / 116.0 )
+	}
+
+	if z > 0.008856 {
+		z = math.Pow(z, 1 / 3.0)
+	} else {
+		z = ( 7.787 * z ) + ( 16 / 116.0 )
+	}
+
+	l = ( 116 * y ) - 16
+	a = 500 * ( x - y )
+	b = 200 * ( y - z )
+
+	return l, a, b
+}
+
+func rgbToLab (color Color) (l, a, b float64) {
+	x, y, z := rgbToXyz(color)
+	return xyzToLab(x, y, z)
+}
+
+func deltaE (al, aa, ab, bl, ba, bb float64) float64 {
+	return math.Sqrt(math.Pow(( al - bl ), 2 ) + math.Pow(( aa - ba ), 2 ) + math.Pow(( ab - bb ), 2))
 }
