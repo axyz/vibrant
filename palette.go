@@ -34,6 +34,7 @@ type Palette struct {
 	// Contains the quantized palette for a given source image
 	swatches          []*Swatch
 	highestPopulation int
+	pixelCount        int
 	selected          []*Swatch
 }
 
@@ -66,6 +67,7 @@ func NewPalette(img image.Image, numColors int) (Palette, error) {
 		scaleRatio := calculateBitmapMinDimension / minDim
 		b = newScaledBitmap(b.Source, scaleRatio)
 	}
+	p.pixelCount = b.Width * b.Height
 	ccq := newColorCutQuantizer(*b, numColors)
 	swatches := ccq.QuantizedColors
 	p.swatches = swatches
@@ -172,6 +174,7 @@ func (p *Palette) FindColorWithHueDistance(targetLuma, minLuma, maxLuma, targetS
 	}
 	if swatch != nil {
 		swatch.Population = population
+		swatch.Ratio = float64(population) / float64(p.pixelCount)
 		p.selected = append(p.selected, swatch)
 	}
 	return swatch
