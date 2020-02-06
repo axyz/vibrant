@@ -8,6 +8,7 @@ import (
 type Swatch struct {
 	Color      Color
 	Population int
+	Ratio      float64
 	Name       string // might be empty
 }
 
