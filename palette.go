@@ -40,10 +40,10 @@ type Palette struct {
 
 // Calls NewPalette with DEFAULT_CALCULATE_NUMBER_COLORS as a default value for numColors.
 func NewPaletteFromImage(img image.Image) (Palette, error) {
-	return NewPalette(img, DEFAULT_CALCULATE_NUMBER_COLORS, DEFAULT_CALCULATE_BITMAP_MIN_DIMENSION)
+	return NewPalette(img, DEFAULT_CALCULATE_NUMBER_COLORS, DEFAULT_CALCULATE_BITMAP_MIN_DIMENSION, img.Bounds())
 }
 
-func NewPalette(img image.Image, numColors, calculateBitmapMinDimension int) (Palette, error) {
+func NewPalette(img image.Image, numColors, calculateBitmapMinDimension int, rect image.Rectangle) (Palette, error) {
 	// The original comments in the Android source suggest using a number
 	// between 12 and 32, however this almost always results in too few colors
 	// and an incomplete or unsatisfactory (read: inaccurate) result set.
@@ -57,11 +57,17 @@ func NewPalette(img image.Image, numColors, calculateBitmapMinDimension int) (Pa
 	//
 	// See also source code for colorCutQuantizer, vbox, and colorHistogram
 
-	b := newBitmap(img)
+	a := newBitmap(img)
 	var p Palette
 	if numColors < 1 {
 		return p, errors.New("numColors must be 1 or greater")
 	}
+
+	b, err := newCropBitmap(a.Source, rect)
+	if err != nil {
+		panic("source image cannot be cropped")
+	}
+
 	minDim := math.Min(float64(b.Width), float64(b.Height))
 	if minDim > float64(calculateBitmapMinDimension) {
 		scaleRatio := float64(calculateBitmapMinDimension) / minDim
