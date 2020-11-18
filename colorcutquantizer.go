@@ -20,16 +20,15 @@ const (
 type colorCutQuantizer struct {
 	Colors           []int
 	ColorPopulations map[int]int
+	ColorRatios      map[int]float64
 	QuantizedColors  []*Swatch
+	PixelCount       int
 }
 
-// true if the color is close to pure black, pure white, or
-// "the red side of the I line" which I believe is Google-speak for
-// "that particular shade of red which occurs in the red-eye effect"
-// see enwp.org/Red-eye_effect
+// true if the color is close to pure black, pure white
 func shouldIgnoreColor(color int) bool {
-	h, s, l := rgbToHsl(color)
-	return l <= blackMaxLightness || l >= whiteMinLightness || (h >= 0.0278 && h <= 0.1028 && s <= 0.82)
+	_, _, l := rgbToHsl(color)
+	return l <= blackMaxLightness || l >= whiteMinLightness
 }
 
 func shouldIgnoreColorSwatch(sw *Swatch) bool {
@@ -38,10 +37,13 @@ func shouldIgnoreColorSwatch(sw *Swatch) bool {
 
 func newColorCutQuantizer(bitmap bitmap, maxColors int) *colorCutQuantizer {
 	pixels := bitmap.Pixels()
+	pixelCount := bitmap.Width * bitmap.Height
 	histo := newColorHistogram(pixels)
 	colorPopulations := make(map[int]int, histo.NumberColors)
+	colorRatios := make(map[int]float64, histo.NumberColors)
 	for i, c := range histo.Colors {
 		colorPopulations[c] = histo.ColorCounts[i]
+		colorRatios[c] = float64(histo.ColorCounts[i]) / float64(pixelCount)
 	}
 	validColors := make([]int, 0)
 	i := 0
@@ -52,11 +54,11 @@ func newColorCutQuantizer(bitmap bitmap, maxColors int) *colorCutQuantizer {
 		}
 	}
 	validCount := len(validColors)
-	ccq := &colorCutQuantizer{Colors: validColors, ColorPopulations: colorPopulations}
+	ccq := &colorCutQuantizer{Colors: validColors, ColorPopulations: colorPopulations, ColorRatios: colorRatios, PixelCount: pixelCount}
 	if validCount <= maxColors {
 		// note: no quantization actually occurs
 		for _, c := range validColors {
-			ccq.QuantizedColors = append(ccq.QuantizedColors, &Swatch{Color: Color(c), Population: colorPopulations[c]})
+			ccq.QuantizedColors = append(ccq.QuantizedColors, &Swatch{Color: Color(c), Population: colorPopulations[c], Ratio: colorRatios[c]})
 		}
 	} else {
 		ccq.quantizePixels(validCount-1, maxColors)
@@ -80,7 +82,7 @@ func (ccq *colorCutQuantizer) quantizePixels(maxColorIndex, maxColors int) {
 	}
 	for pq.Len() > 0 {
 		v := heap.Pop(&pq).(*vbox)
-		swatch := v.AverageColor()
+		swatch := v.AverageColor(ccq.PixelCount)
 		if !shouldIgnoreColorSwatch(swatch) {
 			ccq.QuantizedColors = append(ccq.QuantizedColors, swatch)
 		}
