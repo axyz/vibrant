@@ -187,7 +187,7 @@ func (v *vbox) modifySignificantOctet(dim int) {
 	}
 }
 
-func (v *vbox) AverageColor() *Swatch {
+func (v *vbox) AverageColor(pixelCount int) *Swatch {
 	sumRed := 0
 	sumGreen := 0
 	sumBlue := 0
@@ -205,7 +205,7 @@ func (v *vbox) AverageColor() *Swatch {
 	avgGreen := round(float64(sumGreen) / float64(sumPop))
 	avgBlue := round(float64(sumBlue) / float64(sumPop))
 
-	return &Swatch{Color: Color(packColor(avgRed, avgGreen, avgBlue)), Population: sumPop}
+	return &Swatch{Color: Color(packColor(avgRed, avgGreen, avgBlue)), Population: sumPop, Ratio: float64(sumPop) / float64(pixelCount)}
 }
 
 // there is no math.Round ._.

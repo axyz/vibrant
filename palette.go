@@ -10,24 +10,24 @@ import (
 // These constants are taken directly from the Android Palette source code,
 // with the exception of DEFAULT_CALCULATE_NUMBER_COLORS which was 16.
 const (
-	calculateBitmapMinDimension     = 100
-	DEFAULT_CALCULATE_NUMBER_COLORS = 256
-	TARGET_DARK_LUMA                = 0.26
-	MAX_DARK_LUMA                   = 0.45
-	MIN_LIGHT_LUMA                  = 0.55
-	TARGET_LIGHT_LUMA               = 0.74
-	MIN_NORMAL_LUMA                 = 0.3
-	TARGET_NORMAL_LUMA              = 0.5
-	MAX_NORMAL_LUMA                 = 0.7
-	TARGET_MUTED_SATURATION         = 0.3
-	MAX_MUTED_SATURATION            = 0.4
-	TARGET_VIBRANT_SATURATION       = 1
-	MIN_VIBRANT_SATURATION          = 0.35
-	WEIGHT_SATURATION               = 3
-	WEIGHT_LUMA                     = 6
-	WEIGHT_POPULATION               = 1
-	MIN_CONTRAST_TITLE_TEXT         = 3.0
-	MIN_CONTRAST_BODY_TEXT          = 4.5
+	DEFAULT_CALCULATE_BITMAP_MIN_DIMENSION = 100
+	DEFAULT_CALCULATE_NUMBER_COLORS        = 256
+	TARGET_DARK_LUMA                       = 0.26
+	MAX_DARK_LUMA                          = 0.45
+	MIN_LIGHT_LUMA                         = 0.55
+	TARGET_LIGHT_LUMA                      = 0.74
+	MIN_NORMAL_LUMA                        = 0.3
+	TARGET_NORMAL_LUMA                     = 0.5
+	MAX_NORMAL_LUMA                        = 0.7
+	TARGET_MUTED_SATURATION                = 0.3
+	MAX_MUTED_SATURATION                   = 0.4
+	TARGET_VIBRANT_SATURATION              = 1
+	MIN_VIBRANT_SATURATION                 = 0.35
+	WEIGHT_SATURATION                      = 3
+	WEIGHT_LUMA                            = 6
+	WEIGHT_POPULATION                      = 1
+	MIN_CONTRAST_TITLE_TEXT                = 3.0
+	MIN_CONTRAST_BODY_TEXT                 = 4.5
 )
 
 type Palette struct {
@@ -40,10 +40,10 @@ type Palette struct {
 
 // Calls NewPalette with DEFAULT_CALCULATE_NUMBER_COLORS as a default value for numColors.
 func NewPaletteFromImage(img image.Image) (Palette, error) {
-	return NewPalette(img, DEFAULT_CALCULATE_NUMBER_COLORS)
+	return NewPalette(img, DEFAULT_CALCULATE_NUMBER_COLORS, DEFAULT_CALCULATE_BITMAP_MIN_DIMENSION, img.Bounds())
 }
 
-func NewPalette(img image.Image, numColors int) (Palette, error) {
+func NewPalette(img image.Image, numColors, calculateBitmapMinDimension int, rect image.Rectangle) (Palette, error) {
 	// The original comments in the Android source suggest using a number
 	// between 12 and 32, however this almost always results in too few colors
 	// and an incomplete or unsatisfactory (read: inaccurate) result set.
@@ -57,14 +57,20 @@ func NewPalette(img image.Image, numColors int) (Palette, error) {
 	//
 	// See also source code for colorCutQuantizer, vbox, and colorHistogram
 
-	b := newBitmap(img)
+	a := newBitmap(img)
 	var p Palette
 	if numColors < 1 {
 		return p, errors.New("numColors must be 1 or greater")
 	}
+
+	b, err := newCropBitmap(a.Source, rect)
+	if err != nil {
+		panic("source image cannot be cropped")
+	}
+
 	minDim := math.Min(float64(b.Width), float64(b.Height))
-	if minDim > calculateBitmapMinDimension {
-		scaleRatio := calculateBitmapMinDimension / minDim
+	if minDim > float64(calculateBitmapMinDimension) {
+		scaleRatio := float64(calculateBitmapMinDimension) / minDim
 		b = newScaledBitmap(b.Source, scaleRatio)
 	}
 	p.pixelCount = b.Width * b.Height
@@ -77,6 +83,10 @@ func NewPalette(img image.Image, numColors int) (Palette, error) {
 	}
 	p.highestPopulation = int(population)
 	return p, nil
+}
+
+func (p *Palette) GetSwatches() []*Swatch {
+	return p.swatches
 }
 
 // Possible map keys are:
@@ -163,7 +173,7 @@ func (p *Palette) FindColorWithHueDistance(targetLuma, minLuma, maxLuma, targetS
 	population := 0
 	for _, sw := range p.swatches {
 		_, sat, luma := rgbToHsl(int(sw.Color))
-		if sat >= minSaturation && sat <= maxSaturation && luma >= minLuma && luma <= maxLuma && !p.isAlreadySelected(sw) && ( minColorDistance == 0 || p.satisfyHueDistance(sw, minColorDistance)) {
+		if sat >= minSaturation && sat <= maxSaturation && luma >= minLuma && luma <= maxLuma && !p.isAlreadySelected(sw) && (minColorDistance == 0 || p.satisfyHueDistance(sw, minColorDistance)) {
 			population += sw.Population
 			value := weightedMean(invertDiff(sat, targetSaturation), WEIGHT_SATURATION, invertDiff(luma, targetLuma), WEIGHT_LUMA, float64(sw.Population)/float64(p.highestPopulation), WEIGHT_POPULATION)
 			if swatch == nil || value > maxValue {
@@ -179,7 +189,6 @@ func (p *Palette) FindColorWithHueDistance(targetLuma, minLuma, maxLuma, targetS
 	}
 	return swatch
 }
-
 
 func (p *Palette) satisfyHueDistance(swatch *Swatch, minColorDistance float64) bool {
 	for _, sw := range p.selected {
@@ -231,22 +240,9 @@ func weightedMean(values ...float64) float64 {
 
 func getColorDistance(a, b *Swatch) float64 {
 	return getDeltaE(a, b)
-	// var ar, ag, ab = a.Color.RGB()
-	// var br, bg, bb = b.Color.RGB()
-	// var ah, _, _ = colorconv.RGBToHSL(uint8(ar), uint8(ag), uint8(ab))
-	// var bh, _, _ = colorconv.RGBToHSL(uint8(br), uint8(bg), uint8(bb))
-	// var ahue = ah * 360
-	// var bhue = bh * 360
-
-	// if (ahue > 360 || bhue > 360) {
-	// 	return 999999
-	// }
-	// right := math.Abs(float64(bhue) - float64(ahue))
-	// left := 360 - right
-	// return int(math.Min(right, left))
 }
 
-func getDeltaE (a, b *Swatch) float64 {
+func getDeltaE(a, b *Swatch) float64 {
 	al, aa, ab := rgbToLab(a.Color)
 	bl, ba, bb := rgbToLab(b.Color)
 	return deltaE(al, aa, ab, bl, ba, bb)
